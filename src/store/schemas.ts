@@ -57,7 +57,7 @@ export const fieldSchemas: Record<DataKey, FieldSchema> = {
     },
     events: {
       blur: async (actions) => {
-        await actions.validateCode();
+        await actions.validatePrdCd();
       },
     },
   },

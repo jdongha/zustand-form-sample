@@ -1,4 +1,5 @@
-import type { FieldUIProps } from '../types/form';
+import type { FieldUIProps } from "../types/form";
+import type { FocusableElement } from "../store/focusRegistry";
 
 type FormFieldProps = {
   label?: string;
@@ -8,8 +9,10 @@ type FormFieldProps = {
   maxLength?: number;
   placeholder?: string;
   helpText?: string;
-  fieldType?: FieldUIProps['fieldType'];
-  options?: FieldUIProps['options'];
+  errorMessage?: string;
+  inputRef?: (element: FocusableElement | null) => void;
+  fieldType?: FieldUIProps["fieldType"];
+  options?: FieldUIProps["options"];
   value: unknown;
   onChange: (value: unknown) => void;
   onBlur?: () => void;
@@ -27,7 +30,9 @@ export function FormField({
   maxLength,
   placeholder,
   helpText,
-  fieldType = 'text',
+  errorMessage,
+  inputRef,
+  fieldType = "text",
   options,
   value,
   onChange,
@@ -46,13 +51,16 @@ export function FormField({
 
   const renderInput = () => {
     switch (fieldType) {
-      case 'number':
+      case "number":
         return (
           <input
+            ref={inputRef}
             type="number"
             className={baseInputClass}
-            value={(value as number) ?? ''}
-            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : 0)}
+            value={(value as number) ?? ""}
+            onChange={(e) =>
+              onChange(e.target.value ? Number(e.target.value) : 0)
+            }
             onBlur={onBlur}
             onFocus={onFocus}
             disabled={disabled}
@@ -60,11 +68,12 @@ export function FormField({
           />
         );
 
-      case 'select':
+      case "select":
         return (
           <select
+            ref={inputRef}
             className={baseInputClass}
-            value={(value as string) ?? ''}
+            value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             onFocus={onFocus}
@@ -79,10 +88,11 @@ export function FormField({
           </select>
         );
 
-      case 'checkbox':
+      case "checkbox":
         return (
           <label className="flex items-center cursor-pointer">
             <input
+              ref={inputRef}
               type="checkbox"
               className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               checked={Boolean(value)}
@@ -95,11 +105,12 @@ export function FormField({
           </label>
         );
 
-      case 'textarea':
+      case "textarea":
         return (
           <textarea
+            ref={inputRef}
             className={`${baseInputClass} resize-none min-h-[100px]`}
-            value={(value as string) ?? ''}
+            value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             onFocus={onFocus}
@@ -112,9 +123,10 @@ export function FormField({
       default:
         return (
           <input
+            ref={inputRef}
             type="text"
             className={baseInputClass}
-            value={(value as string) ?? ''}
+            value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             onFocus={onFocus}
@@ -127,13 +139,15 @@ export function FormField({
   };
 
   // checkbox는 레이아웃이 다름
-  if (fieldType === 'checkbox') {
+  if (fieldType === "checkbox") {
     return (
       <div className="py-2">
         {renderInput()}
-        {helpText && (
-          <p className="mt-1 text-sm text-gray-500">{helpText}</p>
-        )}
+
+        {/* 에러 메시지 */}
+        {errorMessage && <ErrorMessage errorMessage={errorMessage} />}
+
+        {helpText && <HelpText helpText={helpText} />}
       </div>
     );
   }
@@ -151,17 +165,26 @@ export function FormField({
       {/* 필드 컴포넌트 */}
       {renderInput()}
 
+      {/* 에러 메시지 */}
+      {errorMessage && <ErrorMessage errorMessage={errorMessage} />}
+
       {/* 도움말 */}
-      {helpText && (
-        <p className="text-sm text-gray-500">{helpText}</p>
-      )}
+      {helpText && <HelpText helpText={helpText} />}
 
       {/* 길이 제한 */}
-      {maxLength && fieldType !== 'number' && (
+      {maxLength && fieldType !== "number" && (
         <p className="text-xs text-gray-400 text-right">
-          {String(value ?? '').length} / {maxLength}
+          {String(value ?? "").length} / {maxLength}
         </p>
       )}
     </div>
   );
 }
+
+const ErrorMessage = ({ errorMessage }: { errorMessage?: string }) => {
+  return <p className="text-sm text-red-500">{errorMessage}</p>;
+};
+
+const HelpText = ({ helpText }: { helpText?: string }) => {
+  return <p className="text-sm text-gray-500">{helpText}</p>;
+};

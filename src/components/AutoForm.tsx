@@ -1,8 +1,10 @@
 import type { DataKey } from '../types/form';
 import { SchemaField } from './SchemaField';
+import type { FieldRefManager } from '../store/focusRegistry';
 
 type AutoFormProps = {
   keys: DataKey[];
+  refManager: FieldRefManager;
   className?: string;
 };
 
@@ -10,11 +12,11 @@ type AutoFormProps = {
  * 자동 폼 생성 컴포넌트
  * DataKey 배열을 받아 SchemaField들을 렌더링
  */
-export function AutoForm({ keys, className = '' }: AutoFormProps) {
+export function AutoForm({ keys, refManager, className = '' }: AutoFormProps) {
   return (
     <div className={`space-y-4 ${className}`}>
       {keys.map((key) => (
-        <SchemaField key={key} fieldKey={key} />
+        <SchemaField key={key} fieldKey={key} refManager={refManager} />
       ))}
     </div>
   );

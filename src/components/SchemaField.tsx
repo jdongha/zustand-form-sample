@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { DataKey } from '../types/form';
 import {
   useFieldValue,
@@ -6,9 +7,11 @@ import {
   useFieldEventHandler,
 } from '../store';
 import { FormField } from './FormField';
+import type { FieldRefManager } from '../store/focusRegistry';
 
 type SchemaFieldProps = {
   fieldKey: DataKey;
+  refManager: FieldRefManager;
 };
 
 /**
@@ -19,12 +22,16 @@ type SchemaFieldProps = {
  * - 스키마의 ui + 런타임 fieldUI를 병합하여 최종 UI 속성 결정
  * - render prop이 있으면 커스텀 렌더링 (탈출구)
  */
-export function SchemaField({ fieldKey }: SchemaFieldProps) {
+export function SchemaField({ fieldKey, refManager }: SchemaFieldProps) {
   // 각각 독립적으로 구독 (성능 최적화)
   const schema = useFieldSchema(fieldKey);
   const runtimeUI = useFieldUI(fieldKey);
   const value = useFieldValue(fieldKey);
   const { onChange, onBlur, onFocus } = useFieldEventHandler(fieldKey);
+  const handleInputRef = useMemo(
+    () => refManager.register(fieldKey),
+    [refManager, fieldKey],
+  );
 
   // 스키마가 없으면 렌더링하지 않음
   if (!schema) {
@@ -51,7 +58,9 @@ export function SchemaField({ fieldKey }: SchemaFieldProps) {
       hidden={ui.hidden}
       maxLength={ui.maxLength}
       placeholder={ui.placeholder}
+      errorMessage={ui.errorMessage}
       helpText={ui.helpText}
+      inputRef={handleInputRef}
       fieldType={ui.fieldType}
       options={ui.options}
       value={value}

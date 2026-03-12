@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import _ from "lodash";
+import { useShallow } from "zustand/react/shallow";
 import { produce } from "immer";
+import _ from "lodash";
 import type {
   DataKey,
   FieldUIProps,
@@ -8,10 +9,10 @@ import type {
   PathValue,
   StoreActions,
   StoreState,
-} from "../types/form";
-import { fieldSchemas } from "./schemas";
-import { initialFormValues } from "./initialValues";
-import { useShallow } from "zustand/react/shallow";
+} from "@/types/form";
+import { fieldSchemas } from "@/store/schemas";
+import { initialFormValues } from "@/store/initialValues";
+import { mockValidateCode } from "@/api/mock";
 
 /**
  * Zustand 스토어 생성
@@ -66,7 +67,7 @@ export const useFormStore = create<FormStore>((set, get) => {
             nextDirtyCount -= 1;
           }
         }
-        
+
         return {
           data: {
             ...state.data,
@@ -138,15 +139,29 @@ export const useFormStore = create<FormStore>((set, get) => {
      * 런타임에 hidden, disabled 등을 변경할 때 사용
      */
     setFieldUI: (key, patch) => {
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          fieldUI: {
-            ...state.ui.fieldUI,
-            [key]: { ...(state.ui.fieldUI[key] ?? {}), ...patch },
+      set((state) => {
+        const next = produce(state.ui.fieldUI, (draft) => {
+          draft[key] = { ...(draft[key] ?? {}), ...patch };
+        });
+
+        return { ui: { ...state.ui, fieldUI: next } };
+      });
+    },
+
+    /**
+     * 특정 필드로 포커스 이동
+     * 마지막 포커스 요청 이벤트를 갱신한다.
+     */
+    requestFieldFocus: (key) => {
+      set((state) => {
+        const prevRequestId = state.ui.focusRequest?.requestId ?? 0;
+        return {
+          ui: {
+            ...state.ui,
+            focusRequest: { key, requestId: prevRequestId + 1 },
           },
-        },
-      }));
+        };
+      });
     },
 
     /**
@@ -164,6 +179,7 @@ export const useFormStore = create<FormStore>((set, get) => {
         ui: {
           ...state.ui,
           fieldUI: {},
+          focusRequest: null,
         },
       }));
     },
@@ -213,24 +229,27 @@ export const useFormStore = create<FormStore>((set, get) => {
     /**
      * 상품코드 유효성 검사 (예시)
      */
-    validateCode: async () => {
+    validatePrdCd: async () => {
       const code = get().data.formData.base.code ?? "";
 
       // 영문/숫자만 허용
-      const isValid = /^[A-Za-z0-9]+$/.test(code);
+      const { isValid, errorMessage } = await mockValidateCode(code);
 
       if (!isValid && code.length > 0) {
         // 유효하지 않으면 에러 표시 (helpText 활용)
         actions.setFieldUI("base.code", {
-          helpText: "영문과 숫자만 입력 가능합니다",
+          errorMessage,
         });
+        actions.requestFieldFocus("base.code");
+
         return false;
       }
 
-      // 유효하면 원래 helpText로 복원
+      // 유효하면 에러 상태 해제
       actions.setFieldUI("base.code", {
-        helpText: undefined,
+        errorMessage: undefined,
       });
+
       return true;
     },
   };
@@ -246,6 +265,7 @@ export const useFormStore = create<FormStore>((set, get) => {
     ui: {
       schemas: fieldSchemas,
       fieldUI: {},
+      focusRequest: null,
     },
     actions,
   };
@@ -275,6 +295,10 @@ export function useFieldSchema(key: DataKey) {
  */
 export function useFieldUI(key: DataKey): Partial<FieldUIProps> | undefined {
   return useFormStore(useShallow((state) => state.ui.fieldUI[key]));
+}
+
+export function useLastFocusRequest() {
+  return useFormStore((state) => state.ui.focusRequest);
 }
 
 /**

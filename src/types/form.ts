@@ -55,6 +55,7 @@ export type FieldUIProps = {
   maxLength?: number;
   placeholder?: string;
   helpText?: string;
+  errorMessage?: string;
   fieldType?: 'text' | 'number' | 'select' | 'checkbox' | 'textarea';
   options?: { label: string; value: string | number }[];
 };
@@ -90,14 +91,19 @@ export type FieldSchema = {
 export type StoreState = {
   data: {
     formData: FormData;
+    /** 초기 로드 시점의 스냅샷. dirty 비교 기준으로 사용되며 런타임에 변경하지 않는다. */
     original: FormData;
     dirtyKeys: Partial<Record<DataKey, true>>;
     dirtyCount: number;
     hasChanges: boolean;
   };
   ui: {
+    /** 선언적 필드 정의(불변). UI 기본값 + 이벤트 핸들러를 보관하며 런타임에 변경하지 않는다. */
     schemas: Record<string, FieldSchema>;
+    /** 런타임 UI 오버라이드. setFieldUI로 동적 변경되며, 렌더 시 schemas.ui 위에 병합된다. */
     fieldUI: Partial<Record<DataKey, Partial<FieldUIProps>>>;
+    /** 마지막 포커스 요청 이벤트. requestId는 동일 key 재요청을 구분하기 위한 증가값. */
+    focusRequest: { key: DataKey; requestId: number } | null;
   };
 };
 
@@ -111,6 +117,8 @@ export type StoreActions = {
   setValues: (values: ValueEntry[]) => void;
   // 필드 UI 속성 변경
   setFieldUI: (key: DataKey, patch: Partial<FieldUIProps>) => void;
+  // 특정 필드 포커스 요청
+  requestFieldFocus: (key: DataKey) => void;
   // 폼 초기화
   resetForm: () => void;
   // 필드 이벤트 실행
@@ -123,7 +131,7 @@ export type StoreActions = {
   // 비즈니스 로직 액션들
   syncDisplayName: () => void;
   calculateMargin: () => void;
-  validateCode: () => Promise<boolean>;
+  validatePrdCd: () => Promise<boolean>;
 };
 
 /**

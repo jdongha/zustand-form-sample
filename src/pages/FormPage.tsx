@@ -1,22 +1,25 @@
+import { useEffect, useMemo } from 'react';
 import type { DataKey } from '../types/form';
-import { useFormStore, useFormActions } from '../store';
+import { useFormStore, useFormActions, useLastFocusRequest } from '../store';
 import { AutoForm, FormSection } from '../components/AutoForm';
+import { createFieldRefManager } from '../store/focusRegistry';
 
+// 섹션별 필드 키 정의
+const baseInfoKeys: DataKey[] = ['base.name', 'base.displayName', 'base.code'];
+const priceInfoKeys: DataKey[] = ['price.salePrice', 'price.fee', 'price.marginRate'];
+const deliveryInfoKeys: DataKey[] = ['delivery.type', 'delivery.cost', 'delivery.freeThreshold'];
+const optionKeys: DataKey[] = ['options.isActive', 'options.memo'];
+  
 /**
  * 폼 페이지 컴포넌트
  *
  * DataKey 배열로 어떤 필드를 어떤 순서로 보여줄지 결정
- * 실제 프로젝트에서는 100개 이상의 필드가 있을 수 있음
  */
 export function FormPage() {
   const actions = useFormActions();
   const hasChanges = useFormStore((s) => s.data.hasChanges);
-
-  // 섹션별 필드 키 정의
-  const baseInfoKeys: DataKey[] = ['base.name', 'base.displayName', 'base.code'];
-  const priceInfoKeys: DataKey[] = ['price.salePrice', 'price.fee', 'price.marginRate'];
-  const deliveryInfoKeys: DataKey[] = ['delivery.type', 'delivery.cost', 'delivery.freeThreshold'];
-  const optionKeys: DataKey[] = ['options.isActive', 'options.memo'];
+  const focusRequest = useLastFocusRequest();
+  const fieldRefManager = useMemo(() => createFieldRefManager(), []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +33,11 @@ export function FormPage() {
       actions.resetForm();
     }
   };
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    fieldRefManager.focus(focusRequest.key);
+  }, [fieldRefManager, focusRequest]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -59,22 +67,22 @@ export function FormPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 기본정보 섹션 */}
           <FormSection title="📦 기본정보">
-            <AutoForm keys={baseInfoKeys} />
+            <AutoForm keys={baseInfoKeys} refManager={fieldRefManager} />
           </FormSection>
 
           {/* 가격정보 섹션 */}
           <FormSection title="💰 가격정보">
-            <AutoForm keys={priceInfoKeys} />
+            <AutoForm keys={priceInfoKeys} refManager={fieldRefManager} />
           </FormSection>
 
           {/* 배송정보 섹션 */}
           <FormSection title="🚚 배송정보">
-            <AutoForm keys={deliveryInfoKeys} />
+            <AutoForm keys={deliveryInfoKeys} refManager={fieldRefManager} />
           </FormSection>
 
           {/* 기타설정 섹션 */}
           <FormSection title="⚙️ 기타설정">
-            <AutoForm keys={optionKeys} />
+            <AutoForm keys={optionKeys} refManager={fieldRefManager} />
           </FormSection>
 
           {/* 버튼 영역 */}
