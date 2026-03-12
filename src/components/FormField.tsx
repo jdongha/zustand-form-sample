@@ -18,7 +18,6 @@ type FormFieldProps = {
 
 /**
  * 기본 폼 필드 컴포넌트
- * TailwindCSS로 스타일링
  */
 export function FormField({
   label,
@@ -141,16 +140,23 @@ export function FormField({
 
   return (
     <div className="space-y-1">
+      {/* 필드 라벨 */}
       {label && (
         <label className="flex items-center text-sm font-medium text-gray-700">
           {label}
           {required && <span className="ml-1 text-red-500">*</span>}
         </label>
       )}
+
+      {/* 필드 컴포넌트 */}
       {renderInput()}
+
+      {/* 도움말 */}
       {helpText && (
         <p className="text-sm text-gray-500">{helpText}</p>
       )}
+
+      {/* 길이 제한 */}
       {maxLength && fieldType !== 'number' && (
         <p className="text-xs text-gray-400 text-right">
           {String(value ?? '').length} / {maxLength}

@@ -1,15 +1,17 @@
-import { create } from 'zustand';
-import _ from 'lodash';
+import { create } from "zustand";
+import _ from "lodash";
+import { produce } from "immer";
 import type {
   DataKey,
-  FieldEvent,
   FieldUIProps,
   FormStore,
+  PathValue,
   StoreActions,
   StoreState,
-} from '../types/form';
-import { fieldSchemas } from './schemas';
-import { initialFormValues } from './initialValues';
+} from "../types/form";
+import { fieldSchemas } from "./schemas";
+import { initialFormValues } from "./initialValues";
+import { useShallow } from "zustand/react/shallow";
 
 /**
  * Zustand 스토어 생성
@@ -24,12 +26,56 @@ export const useFormStore = create<FormStore>((set, get) => {
   const actions: StoreActions = {
     /**
      * 단일 필드 값 설정
+     *
+     * - 폼 데이터는 중첩 객체이므로 key(path) 기반 업데이트가 필요하다. (ex: "base.name")
+     * - 매번 전체 객체를 structuredClone 하지 않고, 변경된 경로만 불변 갱신하려고 immer를 사용한다.
+     * - hasChanges 계산 비용을 줄이기 위해 deep compare 대신 dirty 상태를 증분 갱신한다.
      */
     setValue: (key, value) => {
       set((state) => {
-        const next = structuredClone(state.data.formData);
-        _.set(next, key, value);
-        return { data: { ...state.data, formData: next } };
+        // 1) 현재 값과 동일하면 아무 것도 하지 않는다.
+        const currentValue = _.get(state.data.formData, key);
+        if (Object.is(currentValue, value)) return state;
+
+        // 2) immer produce:
+        //    draft는 "변경 가능한 것처럼" 다루지만, 결과는 불변 객체(next)로 생성된다.
+        //    즉, 직접 mutate 문법을 쓰면서도 불변성은 유지된다.
+        const next = produce(state.data.formData, (draft) => {
+          _.set(draft, key, value);
+        });
+
+        // 3) dirty 증분 계산:
+        //    "현재 입력값(value)"을 original의 같은 path 값과 비교해서 dirty 여부를 갱신한다.
+        //    shouldBeDirty: 이번 업데이트 후 dirty여야 하는지
+        //    wasDirty: 업데이트 전 dirty였는지
+        const originalValue = _.get(state.data.original, key);
+        const shouldBeDirty = !Object.is(value, originalValue);
+        const wasDirty = Boolean(state.data.dirtyKeys[key]);
+
+        // 4) dirty 상태가 실제로 바뀔 때만 map/count를 수정한다.
+        let nextDirtyKeys = state.data.dirtyKeys;
+        let nextDirtyCount = state.data.dirtyCount;
+        if (shouldBeDirty !== wasDirty) {
+          // 얕은 복사 후 필요한 key만 갱신 (불변성 유지 + 비용 최소화)
+          nextDirtyKeys = { ...state.data.dirtyKeys };
+          if (shouldBeDirty) {
+            nextDirtyKeys[key] = true;
+            nextDirtyCount += 1;
+          } else {
+            delete nextDirtyKeys[key];
+            nextDirtyCount -= 1;
+          }
+        }
+        
+        return {
+          data: {
+            ...state.data,
+            formData: next,
+            dirtyKeys: nextDirtyKeys,
+            dirtyCount: nextDirtyCount,
+            hasChanges: nextDirtyCount > 0,
+          },
+        };
       });
     },
 
@@ -38,11 +84,52 @@ export const useFormStore = create<FormStore>((set, get) => {
      */
     setValues: (values) => {
       set((state) => {
-        const next = structuredClone(state.data.formData);
-        values.forEach(({ key, value }) => {
-          _.set(next, key, value);
+        const touchedKeys = new Set<DataKey>();
+        let hasChange = false;
+        const next = produce(state.data.formData, (draft) => {
+          values.forEach(({ key, value }) => {
+            const currentValue = _.get(draft, key);
+            if (Object.is(currentValue, value)) return;
+            _.set(draft, key, value);
+            hasChange = true;
+            touchedKeys.add(key);
+          });
         });
-        return { data: { ...state.data, formData: next } };
+        if (!hasChange) return state;
+
+        let nextDirtyKeys = state.data.dirtyKeys;
+        let nextDirtyCount = state.data.dirtyCount;
+
+        for (const touchedKey of touchedKeys) {
+          const nextValue = _.get(next, touchedKey);
+          const originalValue = _.get(state.data.original, touchedKey);
+          const shouldBeDirty = !Object.is(nextValue, originalValue);
+          const wasDirty = Boolean(nextDirtyKeys[touchedKey]);
+
+          if (shouldBeDirty === wasDirty) continue;
+
+          if (nextDirtyKeys === state.data.dirtyKeys) {
+            nextDirtyKeys = { ...state.data.dirtyKeys };
+          }
+
+          if (shouldBeDirty) {
+            nextDirtyKeys[touchedKey] = true;
+            nextDirtyCount += 1;
+          } else {
+            delete nextDirtyKeys[touchedKey];
+            nextDirtyCount -= 1;
+          }
+        }
+
+        return {
+          data: {
+            ...state.data,
+            formData: next,
+            dirtyKeys: nextDirtyKeys,
+            dirtyCount: nextDirtyCount,
+            hasChanges: nextDirtyCount > 0,
+          },
+        };
       });
     },
 
@@ -70,6 +157,9 @@ export const useFormStore = create<FormStore>((set, get) => {
         data: {
           formData: structuredClone(initialFormValues),
           original: state.data.original,
+          dirtyKeys: {},
+          dirtyCount: 0,
+          hasChanges: false,
         },
         ui: {
           ...state.ui,
@@ -79,21 +169,13 @@ export const useFormStore = create<FormStore>((set, get) => {
     },
 
     /**
-     * 변경 여부 확인
-     */
-    hasChanges: () => {
-      const { formData, original } = get().data;
-      return !_.isEqual(formData, original);
-    },
-
-    /**
      * 필드 이벤트 처리
      * change 이벤트: 값 반영 후 핸들러 실행
      * blur/focus 이벤트: 핸들러만 실행
      */
     onFieldEvent: (event, key, value) => {
       // change 이벤트일 때만 값 반영
-      if (event === 'change' && value !== undefined) {
+      if (event === "change" && value !== undefined) {
         actions.setValue(key, value);
       }
 
@@ -110,8 +192,8 @@ export const useFormStore = create<FormStore>((set, get) => {
      * 상품명 → 표시명 동기화
      */
     syncDisplayName: () => {
-      const name = get().data.formData.base.name ?? '';
-      actions.setValue('base.displayName', name);
+      const name = get().data.formData.base.name ?? "";
+      actions.setValue("base.displayName", name);
     },
 
     /**
@@ -122,9 +204,9 @@ export const useFormStore = create<FormStore>((set, get) => {
       const { salePrice = 0, fee = 0 } = get().data.formData.price;
       if (salePrice > 0) {
         const marginRate = Math.round(((salePrice - fee) / salePrice) * 100);
-        actions.setValue('price.marginRate', marginRate);
+        actions.setValue("price.marginRate", marginRate);
       } else {
-        actions.setValue('price.marginRate', 0);
+        actions.setValue("price.marginRate", 0);
       }
     },
 
@@ -132,21 +214,21 @@ export const useFormStore = create<FormStore>((set, get) => {
      * 상품코드 유효성 검사 (예시)
      */
     validateCode: async () => {
-      const code = get().data.formData.base.code ?? '';
+      const code = get().data.formData.base.code ?? "";
 
       // 영문/숫자만 허용
       const isValid = /^[A-Za-z0-9]+$/.test(code);
 
       if (!isValid && code.length > 0) {
         // 유효하지 않으면 에러 표시 (helpText 활용)
-        actions.setFieldUI('base.code', {
-          helpText: '영문과 숫자만 입력 가능합니다',
+        actions.setFieldUI("base.code", {
+          helpText: "영문과 숫자만 입력 가능합니다",
         });
         return false;
       }
 
       // 유효하면 원래 helpText로 복원
-      actions.setFieldUI('base.code', {
+      actions.setFieldUI("base.code", {
         helpText: undefined,
       });
       return true;
@@ -157,6 +239,9 @@ export const useFormStore = create<FormStore>((set, get) => {
     data: {
       formData: structuredClone(initialFormValues),
       original: structuredClone(initialFormValues),
+      dirtyKeys: {},
+      dirtyCount: 0,
+      hasChanges: false,
     },
     ui: {
       schemas: fieldSchemas,
@@ -172,40 +257,43 @@ export const useFormStore = create<FormStore>((set, get) => {
 /**
  * 특정 필드 값만 구독
  */
-export function useFieldValue<T = unknown>(key: DataKey): T {
-  return useFormStore((state) => _.get(state.data.formData, key) as T);
+export function useFieldValue<K extends DataKey>(key: K): PathValue<K> {
+  return useFormStore(
+    useShallow((state) => _.get(state.data.formData, key) as PathValue<K>),
+  );
 }
 
 /**
  * 특정 필드 스키마만 구독
  */
 export function useFieldSchema(key: DataKey) {
-  return useFormStore((state) => state.ui.schemas[key]);
+  return useFormStore(useShallow((state) => state.ui.schemas[key]));
 }
 
 /**
  * 특정 필드의 런타임 UI 속성만 구독
  */
 export function useFieldUI(key: DataKey): Partial<FieldUIProps> | undefined {
-  return useFormStore((state) => state.ui.fieldUI[key]);
+  return useFormStore(useShallow((state) => state.ui.fieldUI[key]));
 }
 
 /**
  * 액션만 구독 (리렌더 방지)
  */
 export function useFormActions() {
-  return useFormStore((state) => state.actions);
+  return useFormStore(useShallow((state) => state.actions));
 }
 
 /**
  * 필드 이벤트 핸들러 훅
  */
-export function useFieldEventHandler(key: DataKey) {
+export function useFieldEventHandler<K extends DataKey>(key: K) {
   const actions = useFormActions();
 
   return {
-    onChange: (value: unknown) => actions.onFieldEvent('change', key, value),
-    onBlur: () => actions.onFieldEvent('blur', key),
-    onFocus: () => actions.onFieldEvent('focus', key),
+    onChange: (value: unknown) =>
+      actions.onFieldEvent("change", key, value as PathValue<K>),
+    onBlur: () => actions.onFieldEvent("blur", key),
+    onFocus: () => actions.onFieldEvent("focus", key),
   };
 }

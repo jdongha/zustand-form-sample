@@ -1,4 +1,4 @@
-import type { Paths } from 'type-fest';
+import type { Get, Paths } from 'type-fest';
 
 /**
  * 폼 데이터 타입 정의
@@ -31,6 +31,18 @@ export type FormData = {
  * type-fest의 Paths 유틸리티 사용
  */
 export type DataKey = Paths<FormData>;
+
+/**
+ * 경로 키에 해당하는 값 타입
+ */
+export type PathValue<K extends DataKey> = Get<FormData, K>;
+
+export type ValueEntry = {
+  [K in DataKey]: {
+    key: K;
+    value: PathValue<K>;
+  };
+}[DataKey];
 
 /**
  * 필드 UI 속성 타입
@@ -79,6 +91,9 @@ export type StoreState = {
   data: {
     formData: FormData;
     original: FormData;
+    dirtyKeys: Partial<Record<DataKey, true>>;
+    dirtyCount: number;
+    hasChanges: boolean;
   };
   ui: {
     schemas: Record<string, FieldSchema>;
@@ -91,17 +106,19 @@ export type StoreState = {
  */
 export type StoreActions = {
   // 값 설정
-  setValue: (key: DataKey, value: unknown) => void;
+  setValue: <K extends DataKey>(key: K, value: PathValue<K>) => void;
   // 여러 값 한번에 설정
-  setValues: (values: { key: DataKey; value: unknown }[]) => void;
+  setValues: (values: ValueEntry[]) => void;
   // 필드 UI 속성 변경
   setFieldUI: (key: DataKey, patch: Partial<FieldUIProps>) => void;
   // 폼 초기화
   resetForm: () => void;
-  // 변경 여부 확인
-  hasChanges: () => boolean;
   // 필드 이벤트 실행
-  onFieldEvent: (event: FieldEvent, key: DataKey, value?: unknown) => void;
+  onFieldEvent: <K extends DataKey>(
+    event: FieldEvent,
+    key: K,
+    value?: PathValue<K>
+  ) => void;
 
   // 비즈니스 로직 액션들
   syncDisplayName: () => void;

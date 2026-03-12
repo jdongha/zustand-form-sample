@@ -10,8 +10,7 @@ import { AutoForm, FormSection } from '../components/AutoForm';
  */
 export function FormPage() {
   const actions = useFormActions();
-  const hasChanges = useFormStore((s) => s.actions.hasChanges());
-  const formData = useFormStore((s) => s.data.formData);
+  const hasChanges = useFormStore((s) => s.data.hasChanges);
 
   // 섹션별 필드 키 정의
   const baseInfoKeys: DataKey[] = ['base.name', 'base.displayName', 'base.code'];
@@ -21,6 +20,7 @@ export function FormPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const formData = useFormStore.getState().data.formData;
     console.log('Submit form data:', formData);
     alert('폼 데이터가 콘솔에 출력되었습니다.');
   };
